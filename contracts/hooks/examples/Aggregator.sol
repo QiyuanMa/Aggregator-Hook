@@ -6,30 +6,33 @@ import {CurrencyLibrary, Currency} from "@uniswap/v4-core/contracts/types/Curren
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
 import {FeeLibrary} from "@uniswap/v4-core/contracts/libraries/FeeLibrary.sol";
 import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
+import {FullMath} from "@uniswap/v4-core/contracts/libraries/FullMath.sol";
 import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
 import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
 import {BaseHook} from "../../BaseHook.sol";
 import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
 import {ILockCallback} from "@uniswap/v4-core/contracts/interfaces/callback/ILockCallback.sol";
 import {IERC20Minimal} from "@uniswap/v4-core/contracts/interfaces/external/IERC20Minimal.sol";
-import {D3Maker} from "./D3Maker.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import "forge-std/Test.sol";
 
 import "../../libraries/LiquidityAmounts.sol";
-import "./D3Maker.sol";
 
-contract AggregatorHook is BaseHook, ILockCallback, D3Maker {
+contract AggregatorHook is BaseHook, ILockCallback{
     using CurrencyLibrary for Currency;
     using PoolIdLibrary for PoolKey;
     using FeeLibrary for uint24;
 
     error SenderMustBeHook();
+    error PriceDiffTooLarge();
 
     bytes internal constant ZERO_BYTES = bytes("");
+    uint256 internal constant Q96 = 0x1000000000000000000000000;
 
     int24 public tickLower;
     int24 public tickUpper;
-    int24 public tickMid;
+    
+    int256 public targetAmount;
 
     // record deposited into uni
     // todo maybe not necessary
@@ -57,11 +60,22 @@ contract AggregatorHook is BaseHook, ILockCallback, D3Maker {
     }
 
     // Only for mocking
-    // function setTicks(int24 current, int24 lower, int24 upper) public {
-    //     currentTick = current;
-    //     lowerTick = lower;
-    //     upperTick = upper;
-    // }
+    function getAmountOut(
+        uint256 fromAmount, 
+        bool zeroForOne
+    ) public returns(uint256 toAmount, int24 tickUp, int24 tickLow) {
+        // todo change any price, current = 0.000921
+        uint256 zeroForOneMockPrice = 9213376791555881;
+        toAmount = zeroForOne ? 
+            fromAmount * zeroForOneMockPrice / 1e18 :
+            fromAmount * 1e36 / zeroForOneMockPrice;
+        
+        targetAmount = int256(toAmount);
+        // calculate accrute tick
+        uint160 midPriceSqrtQ = uint160(FullMath.mulDiv(Math.sqrt(zeroForOneMockPrice), Q96, 10 ** 9));
+        tickLow = TickMath.getTickAtSqrtRatio(midPriceSqrtQ);
+        tickUp = tickLow + 1;
+    }
 
     function removeRemainingLiquidity(PoolKey calldata key) external {
         console.log("\n========= removeRemainingLiquidity ==========");
@@ -71,8 +85,8 @@ contract AggregatorHook is BaseHook, ILockCallback, D3Maker {
         _modifyPosition(
             key,
             IPoolManager.ModifyPositionParams({
-                tickLower: -tickUpper,
-                tickUpper: -tickLower, 
+                tickLower: tickLower,
+                tickUpper: tickUpper, 
                 liquidityDelta: -int128(liquidity)
             })
         );
@@ -100,7 +114,7 @@ contract AggregatorHook is BaseHook, ILockCallback, D3Maker {
     }
 
     // Add liquidity into pool before swap
-    function beforeSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata, bytes calldata)
+    function beforeSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata swapData, bytes calldata)
         external
         override
         poolManagerOnly
@@ -110,104 +124,34 @@ contract AggregatorHook is BaseHook, ILockCallback, D3Maker {
         address token0 = Currency.unwrap(key.currency0);
         address token1 = Currency.unwrap(key.currency1);
 
-        uint256 token0Reserve = 12 ether; //getTokenReserve(token0);
-        
+        uint256 fromAmount = uint256(swapData.amountSpecified);// decode swapParam
+        bool zeroForOne = swapData.zeroForOne;
+        uint256 toAmount;
 
-        (tickLower, tickUpper, tickMid) = getTicksFromTokenInfo(key);
+        // query getAmountOut to generate fixed price
+        (toAmount, tickUpper, tickLower) = getAmountOut(fromAmount, zeroForOne);
 
-        console.log();
-        console2.log("tickLower", tickLower);
-        console2.log("tickUpper", tickUpper);
-        console2.log("tickMid", tickMid);
-        
-        int24 tickSpacing = key.tickSpacing;
-
-        if (tickLower < 0) {
-            tickLower = tickLower / tickSpacing * tickSpacing - tickSpacing;
-        } else {
-            tickLower = tickLower / tickSpacing * tickSpacing;
-        }
-
-        if (tickUpper > 0) {
-            tickUpper = tickUpper / tickSpacing * tickSpacing + tickSpacing;
-        } else {
-            tickUpper = tickUpper / tickSpacing * tickSpacing;
-        }
-
-        (, int24 tick,uint24 hookswapFee ,) = poolManager.getSlot0(poolId);
+        {
+        (, int24 tick,,) = poolManager.getSlot0(poolId);
 
         console.log();
-        console.log("hookFee:", hookswapFee);
         console.log("round tick by tickSpacing:");
         console2.log("tickLower", tickLower);
         console2.log("tickUpper", tickUpper);
-        console2.log("tickMid", tickMid);
         console2.log("slot0 tick:", tick);
-
-        // version 2
-        // tickMid = tickLower + key.tickSpacing;
-
-        // if (tickMid == tickUpper) {
-        //     tickMid = tickLower + key.tickSpacing / 2;
-        // }
-        // console2.log("tickMid new", tickMid);
-
-        // version 3
-        // tickMid = tickLower + key.tickSpacing;
-        // tickUpper = tickLower + 2 * key.tickSpacing;
-        // console2.log("tickUpper new", tickUpper);
-
-        // version 4
-        // todo fix +/-
-        if (tickMid < 0) {
-            tickLower = tickMid / tickSpacing * tickSpacing - 2 *tickSpacing;
-            tickUpper = tickMid / tickSpacing * tickSpacing + 2 * tickSpacing;
-        } else if (tickMid > 0) {
-            tickLower = tickMid / tickSpacing * tickSpacing - 2 *tickSpacing;
-            tickUpper = tickMid / tickSpacing * tickSpacing + 2 * tickSpacing;
-        } else {
-            tickLower = tickMid - 2 * tickSpacing;
-            tickUpper = tickMid + 2 * tickSpacing;
         }
-        tickMid = (tickLower + tickUpper) / 2;
 
-         // one group param
-        tickLower = 46873;
-        tickUpper = 46874;
-        //uint256 token1Reserve = uint(9213376791555881) * uint(1650) / uint(1000);//1 ether; //getTokenReserve(token1);
-        uint token1Reserve = uint(9213376791555881);
-
-        /*
-        tickLower = 46853;
-        tickUpper = 46854;
-        uint256 token1Reserve = uint(9213376791555883);
-        */
-
-        console.log();
-        console.log("version4 ticks:");
-        console2.log("tickLower", tickLower);
-        console2.log("tickUpper", tickUpper);
-        console2.log("tickMid", tickMid);
-        console2.log("sqrtPrice:", TickMath.getSqrtRatioAtTick(-tickLower));
-
-        /*
-        uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
-            TickMath.getSqrtRatioAtTick(tick),
-            TickMath.getSqrtRatioAtTick(-tickLower),
-            TickMath.getSqrtRatioAtTick(-tickUpper),
-            token0Reserve,
-            token1Reserve
-        );
-        */
-        uint128 liquidity = _calJITLiquidity(-tickLower, 1 ether, token1Reserve, true);
-        console.log("token reserve:", token0Reserve);
+        // if zeroForOne, tick go up, from tickUpper to tickLower
+        // if not, tick go down, from tickLower to tickUpper
+        int24 calTick = zeroForOne ? tickUpper : tickLower;
+        uint128 liquidity = _calJITLiquidity(calTick, fromAmount, toAmount, zeroForOne);
         console.log("before deposit:", liquidity);
 
         BalanceDelta delta = _modifyPosition(
             key,
             IPoolManager.ModifyPositionParams({
-                tickLower: -tickUpper,
-                tickUpper: -tickLower,
+                tickLower: tickLower,
+                tickUpper: tickUpper,
                 liquidityDelta: int128(liquidity)
             })
         );
@@ -222,6 +166,7 @@ contract AggregatorHook is BaseHook, ILockCallback, D3Maker {
     /// @notice since user transfer in after the whole swap in PoolSwapTest.sol, 
     /// actually it could not remove liquidty in afterSwap handle if filling liquidity
     /// accurately. So maybe it's no need to add afterSwap.
+    /// In current condition, it only use to check price diff.
     function afterSwap(
         address,
         PoolKey calldata key,
@@ -248,35 +193,23 @@ contract AggregatorHook is BaseHook, ILockCallback, D3Maker {
 
         uint256 amount0;
         uint256 amount1;
+        int256 priceDiff;
 
         if (delta.amount0() > 0 && delta.amount1() < 0) {
             amount0 = balance0 + uint128(delta.amount0())* (1000000 - fee) / 1000000; 
             amount1 = balance1 - uint128(-delta.amount1()) ;
+            priceDiff = int256(targetAmount + delta.amount1()) * 1e18 / targetAmount;
         }
 
         if (delta.amount0() < 0 && delta.amount1() > 0) {
             amount0 = balance0 - uint128(-delta.amount0());
             amount1 = balance1 + uint128(delta.amount1()) * (1000000 - fee) / 1000000;
-        }
-        console.log("begin afterSwap");
-        
+            priceDiff = int256(targetAmount + delta.amount0()) * 1e18 / targetAmount;
+        }   
+        if(uint256(priceDiff >= 0 ? priceDiff : -priceDiff) > 1e12) revert PriceDiffTooLarge();
 
-        liquidity = LiquidityAmounts.getLiquidityForAmounts(
-                TickMath.getSqrtRatioAtTick(tick+100),
-                TickMath.getSqrtRatioAtTick(-tickLower),
-                TickMath.getSqrtRatioAtTick(-tickUpper),
-                amount0,
-                amount1
-            );
-        console.log("\nUsing below amounts to calculate liquidity to be removed");
-        console.log("token0 amount", amount0);
-        console.log("token1 amount", amount1);
-        console.log("liquidity:", liquidity);
         
-
-        uint128 tickliquidity = poolManager.getLiquidity(poolId,address(this), -tickUpper-1,-tickLower-1);
-        console.log("owner:", tickliquidity);
-        tickliquidity = poolManager.getLiquidity(poolId);
+        uint128 tickliquidity = poolManager.getLiquidity(poolId);
         console.log("all:", tickliquidity);
         
         /*
@@ -360,12 +293,5 @@ contract AggregatorHook is BaseHook, ILockCallback, D3Maker {
         uint256 amount1 = uint256(uint128(-delta.amount1()));
         poolManager.take(key.currency0, address(this), amount0);
         poolManager.take(key.currency1, address(this), amount1);
-    }
-
-    // D3MM function
-    function getTokenReserve(address token) public view returns (uint256) {
-        // real: return state.balances[token];
-        // mock: return IERC20(token).balanceOf(address(this));
-        return IERC20Minimal(token).balanceOf(address(this));
     }
 }

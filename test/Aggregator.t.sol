@@ -179,10 +179,12 @@ contract TestAggregatorHook is Test, Deployers, GasSnapshot {
         token0.mint(address(aggregatorHook), 1000 ether);
         token1.mint(address(aggregatorHook), 1000 ether);
 
+        /*
         D3Maker.TokenMMInfo memory token0Info = constructToken0Info();
         D3Maker.TokenMMInfo memory token1Info = constructToken1Info();
         aggregatorHook.setTokenMMInfo(address(token0), token0Info);
         aggregatorHook.setTokenMMInfo(address(token1), token1Info);
+        */
 
         IPoolManager.SwapParams memory params =
             IPoolManager.SwapParams({zeroForOne: true, amountSpecified: 1 ether, sqrtPriceLimitX96: MIN_SQRT_RATIO + 1});
