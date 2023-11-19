@@ -181,7 +181,6 @@ contract AggregatorHook is BaseHook, PriceTool, ILockCallback {
         return AggregatorHook.beforeSwap.selector;
     }
 
-    // Remove all liquidity in pool after swap
     /// @notice since user transfer in after the whole swap in PoolSwapTest.sol, 
     /// actually it could not remove liquidty in afterSwap handle if filling liquidity
     /// accurately. So maybe it's no need to add afterSwap.
