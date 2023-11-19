@@ -18,7 +18,19 @@ import "forge-std/Test.sol";
 
 import "../../libraries/LiquidityAmounts.sol";
 
-contract AggregatorHook is BaseHook, ILockCallback{
+contract PriceTool {
+    uint256 public mockPrice = 0;
+
+    function setNewPrice(uint256 newPrice) public {
+        mockPrice = newPrice;
+    }
+
+    function getMockPrice() public view returns(uint256 p) {
+        p = mockPrice;
+    }
+}
+
+contract AggregatorHook is BaseHook, PriceTool, ILockCallback {
     using CurrencyLibrary for Currency;
     using PoolIdLibrary for PoolKey;
     using FeeLibrary for uint24;
@@ -58,17 +70,16 @@ contract AggregatorHook is BaseHook, ILockCallback{
             afterDonate: false
         });
     }
-
+    
     // Only for mocking
-    function getAmountOut(
+    function getMockAmountOut(
         uint256 fromAmount, 
         bool zeroForOne
     ) public returns(uint256 toAmount, int24 tickUp, int24 tickLow) {
-        // todo change any price, current = 0.000921
-        uint256 zeroForOneMockPrice = 9213376791555881;
+        uint256 zeroForOneMockPrice = getMockPrice();
         toAmount = zeroForOne ? 
             fromAmount * zeroForOneMockPrice / 1e18 :
-            fromAmount * 1e36 / zeroForOneMockPrice;
+            fromAmount * 1e18 / zeroForOneMockPrice;
         
         targetAmount = int256(toAmount);
         // calculate accrute tick
@@ -76,11 +87,15 @@ contract AggregatorHook is BaseHook, ILockCallback{
         tickLow = TickMath.getTickAtSqrtRatio(midPriceSqrtQ);
         tickUp = tickLow + 1;
     }
+    
 
-    function removeRemainingLiquidity(PoolKey calldata key) external {
+    function removeRemainingLiquidity(PoolKey calldata key) public returns(bool){
         console.log("\n========= removeRemainingLiquidity ==========");
         PoolId poolId = key.toId();
         uint128 liquidity = poolManager.getLiquidity(poolId);
+        console2.log(tickLower);
+        console2.log(tickUpper);
+        if(liquidity == 0) return true;
 
         _modifyPosition(
             key,
@@ -97,6 +112,7 @@ contract AggregatorHook is BaseHook, ILockCallback{
 
         (, int24 tick,,) = poolManager.getSlot0(poolId);
         console2.log("after remove tick:", tick);
+        return true;
     }
 
     // ------------ IHook ----------------
@@ -124,12 +140,17 @@ contract AggregatorHook is BaseHook, ILockCallback{
         address token0 = Currency.unwrap(key.currency0);
         address token1 = Currency.unwrap(key.currency1);
 
+        // before start, remove liquidity last time left
+        removeRemainingLiquidity(key);
+        console.log("\n========= beginSwap ==========");
+
+        // begin new swap
         uint256 fromAmount = uint256(swapData.amountSpecified);// decode swapParam
         bool zeroForOne = swapData.zeroForOne;
         uint256 toAmount;
 
         // query getAmountOut to generate fixed price
-        (toAmount, tickUpper, tickLower) = getAmountOut(fromAmount, zeroForOne);
+        (toAmount, tickUpper, tickLower) = getMockAmountOut(fromAmount, zeroForOne);
 
         {
         (, int24 tick,,) = poolManager.getSlot0(poolId);
@@ -241,7 +262,12 @@ contract AggregatorHook is BaseHook, ILockCallback{
             uint256 tmp2 = fromAmount * uint256(sqrtPriceX96) * toAmount / Q96;
             liquidity = uint128(tmp2 / tmp1);
         } else {
-            uint256 tmp1 = fromAmount - toAmount * uint256(sqrtPriceX96) / Q96 *uint256(sqrtPriceX96) / Q96;
+            // todo the formula didn't work
+            console.log("sell token1");
+            console2.log("curTick:", curTick);
+            console2.log(targetAmount);
+            console.log(toAmount * uint256(sqrtPriceX96) / Q96 * uint256(sqrtPriceX96) / Q96);
+            uint256 tmp1 = fromAmount - toAmount * uint256(sqrtPriceX96) / Q96 * uint256(sqrtPriceX96) / Q96;
             uint256 tmp2 = fromAmount * uint256(sqrtPriceX96) * toAmount / Q96;
             liquidity = uint128(tmp2 / tmp1);
         }

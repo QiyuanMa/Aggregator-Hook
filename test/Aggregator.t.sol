@@ -59,6 +59,7 @@ contract TestAggregatorHook is Test, Deployers, GasSnapshot {
     uint256 constant MAX_DEADLINE = 12329839823;
     uint256 constant MAX_TICK_LIQUIDITY = 11505069308564788430434325881101412;
     uint160 internal constant MIN_SQRT_RATIO = 4295128739;
+    uint160 internal constant MAX_SQRT_RATIO = 1461446703485210103287273052203988822378723970342;
     uint8 constant DUST = 30;
 
     uint160 public constant SQRT_RATIO_2_1 = 112045541949572279837463876454;
@@ -167,7 +168,7 @@ contract TestAggregatorHook is Test, Deployers, GasSnapshot {
         );
     }
 
-    function testHook_swap() public {
+    function testHook_SwapFirstTime() public {
         PoolKey memory testKey = key;
         token0.mint(address(aggregatorHook), 1 ether);
         token1.mint(address(aggregatorHook), 1 ether);
@@ -178,6 +179,12 @@ contract TestAggregatorHook is Test, Deployers, GasSnapshot {
 
         token0.mint(address(aggregatorHook), 1000 ether);
         token1.mint(address(aggregatorHook), 1000 ether);
+
+        // question state hook change is keep, however global variable, even setting constant is zero
+        // but if call a write function, it will work
+        aggregatorHook.setNewPrice(9213376791555881);
+        (uint256 toAmount,,) = aggregatorHook.getMockAmountOut(1 ether, true);
+        console.log(toAmount);
 
         /*
         D3Maker.TokenMMInfo memory token0Info = constructToken0Info();
@@ -195,6 +202,7 @@ contract TestAggregatorHook is Test, Deployers, GasSnapshot {
         swapRouter.swap(testKey, params, settings, ZERO_BYTES);
         snapEnd();
 
+        /*
         console.log();
         console.log("token0(pool token1) balance in manager", token0.balanceOf(address(manager)));
         console.log("token1(pool token0) balance in manager", token1.balanceOf(address(manager)));
@@ -207,5 +215,25 @@ contract TestAggregatorHook is Test, Deployers, GasSnapshot {
         console.log("token1 balance(pool token0) in manager", token1.balanceOf(address(manager)));
         console.log("token0 balance in aggregatorHook", token0.balanceOf(address(aggregatorHook)));
         console.log("token1 balance in aggregatorHook", token1.balanceOf(address(aggregatorHook)));
+        */
+    }
+
+    function testHook_SwapSecondTime() public {
+        testHook_SwapFirstTime();
+        PoolKey memory testKey = key;
+
+        // sell token0 to token1, the second time
+        IPoolManager.SwapParams memory params =
+            IPoolManager.SwapParams({zeroForOne: true, amountSpecified: 1 ether, sqrtPriceLimitX96: MIN_SQRT_RATIO + 1});
+        PoolSwapTest.TestSettings memory settings =
+            PoolSwapTest.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
+
+        // notice could not use the same price, not single token deposit cause amount lack 
+        // making price diff is too big.
+        aggregatorHook.setNewPrice(9212376791555881);
+
+        snapStart("HookSecondSwap");
+        swapRouter.swap(testKey, params, settings, ZERO_BYTES);
+        snapEnd();
     }
 }
