@@ -177,53 +177,31 @@ contract AggregatorHook is BaseHook, ILockCallback{
         PoolId poolId = key.toId();
         uint128 liquidity = poolManager.getLiquidity(poolId);
 
-        // todo fix this read balance, use poolManage
-        uint256 balance0 = depositedInPoolManager[Currency.unwrap(key.currency0)];
-        uint256 balance1 = depositedInPoolManager[Currency.unwrap(key.currency1)];
-
         (, int24 tick,,) = poolManager.getSlot0(poolId);
 
         uint24 fee = key.fee.getStaticFee();
-        console.log("afterSwap fee:", fee);
+        console.log("\nafterSwap");
+        console.log("fee:", fee);
+        console2.log("target amount:", targetAmount);
         console2.log("delta amount1:", delta.amount1());
         console2.log("delta amount0:", delta.amount0());
-        console.log("balance1:", balance1);
-        console.log("balance0:", balance0);
 
-
-        uint256 amount0;
-        uint256 amount1;
         int256 priceDiff;
 
         if (delta.amount0() > 0 && delta.amount1() < 0) {
-            amount0 = balance0 + uint128(delta.amount0())* (1000000 - fee) / 1000000; 
-            amount1 = balance1 - uint128(-delta.amount1()) ;
             priceDiff = int256(targetAmount + delta.amount1()) * 1e18 / targetAmount;
         }
 
         if (delta.amount0() < 0 && delta.amount1() > 0) {
-            amount0 = balance0 - uint128(-delta.amount0());
-            amount1 = balance1 + uint128(delta.amount1()) * (1000000 - fee) / 1000000;
             priceDiff = int256(targetAmount + delta.amount0()) * 1e18 / targetAmount;
         }   
+        console2.log("price diff:", priceDiff);
         if(uint256(priceDiff >= 0 ? priceDiff : -priceDiff) > 1e12) revert PriceDiffTooLarge();
 
         
         uint128 tickliquidity = poolManager.getLiquidity(poolId);
-        console.log("all:", tickliquidity);
+        console.log("all liquidity:", tickliquidity);
         
-        /*
-        _modifyPosition(
-            key,
-            IPoolManager.ModifyPositionParams({
-                tickLower: -tickUpper,
-                tickUpper: -tickLower,
-                liquidityDelta: -int128(liquidity)
-            })
-        );
-        
-        */
-
         return AggregatorHook.afterSwap.selector;
     }
 
@@ -263,7 +241,9 @@ contract AggregatorHook is BaseHook, ILockCallback{
             uint256 tmp2 = fromAmount * uint256(sqrtPriceX96) * toAmount / Q96;
             liquidity = uint128(tmp2 / tmp1);
         } else {
-
+            uint256 tmp1 = fromAmount - toAmount * uint256(sqrtPriceX96) / Q96 *uint256(sqrtPriceX96) / Q96;
+            uint256 tmp2 = fromAmount * uint256(sqrtPriceX96) * toAmount / Q96;
+            liquidity = uint128(tmp2 / tmp1);
         }
     }
 
