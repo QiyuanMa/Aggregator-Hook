@@ -199,10 +199,10 @@ contract AggregatorHook is BaseHook, PriceTool, ILockCallback {
 
         uint24 fee = key.fee.getStaticFee();
         console.log("\nafterSwap");
-        console.log("fee:", fee);
         console2.log("target amount:", targetAmount);
         console2.log("delta amount1:", delta.amount1());
         console2.log("delta amount0:", delta.amount0());
+        console2.log("current tick:", tick);
 
         int256 priceDiff;
 

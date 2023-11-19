@@ -189,10 +189,51 @@ contract TestAggregatorHook is Test, Deployers, GasSnapshot {
 
         // notice could not use the same price, not single token deposit cause amount lack 
         // making price diff is too big.
-        aggregatorHook.setNewPrice(9212376791555881);
+        /*
+        aggregatorHook.setNewPrice(9215376791555881); // price become higher , it didn't work, follow market rule
 
         snapStart("HookSecondSwap");
         swapRouter.swap(testKey, params, settings, ZERO_BYTES);
         snapEnd();
+        // after this, the current tick is min_tick, you must trade another direction to make it balance
+        // reflecting the situation that liquidity of token1 is used out. The pool can't sell token1 anymore
+        // But after user sell token1 to this pool, it will rebalance to market price.
+        */
+        
+        aggregatorHook.setNewPrice(92123767915558); // price become lower ,pass
+
+        snapStart("HookSecondSwap");
+        swapRouter.swap(testKey, params, settings, ZERO_BYTES);
+        snapEnd();      
+    }
+
+    function testHook_SwapFrom1to0() public {
+        testHook_SwapFirstTime();
+        PoolKey memory testKey = key;
+
+        // sell token0 to token1, the second time
+        IPoolManager.SwapParams memory params =
+            IPoolManager.SwapParams({zeroForOne: false, amountSpecified: 9214376791555881, sqrtPriceLimitX96: MAX_SQRT_RATIO - 1});
+        PoolSwapTest.TestSettings memory settings =
+            PoolSwapTest.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
+
+        // notice could not use the same price, not single token deposit cause amount lack 
+        // making price diff is too big.
+        /*
+        aggregatorHook.setNewPrice(9215376791555881); // price become higher , it didn't work, follow market rule
+
+        snapStart("HookSecondSwap");
+        swapRouter.swap(testKey, params, settings, ZERO_BYTES);
+        snapEnd();
+        // after this, the current tick is min_tick, you must trade another direction to make it balance
+        // reflecting the situation that liquidity of token1 is used out. The pool can't sell token1 anymore
+        // But after user sell token1 to this pool, it will rebalance to market price.
+        */
+        
+        aggregatorHook.setNewPrice(9214376791555881); // price become lower ,pass
+
+        snapStart("HookFrom1to0Swap");
+        swapRouter.swap(testKey, params, settings, ZERO_BYTES);
+        snapEnd();      
     }
 }
