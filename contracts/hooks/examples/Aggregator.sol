@@ -93,8 +93,6 @@ contract AggregatorHook is BaseHook, PriceTool, ILockCallback {
         console.log("\n========= removeRemainingLiquidity ==========");
         PoolId poolId = key.toId();
         uint128 liquidity = poolManager.getLiquidity(poolId);
-        console2.log(tickLower);
-        console2.log(tickUpper);
         if(liquidity == 0) return true;
 
         _modifyPosition(

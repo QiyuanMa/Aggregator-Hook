@@ -5,7 +5,6 @@ import "forge-std/Test.sol";
 import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
 import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
 import {AggregatorHook} from "../contracts/hooks/examples/Aggregator.sol";
-import {D3Maker} from "../contracts/hooks/examples/D3Maker.sol";
 import {AggregatorHookImplementation} from "./shared/implementation/AggregatorImplementation.sol";
 import {PoolManager} from "@uniswap/v4-core/contracts/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
@@ -85,46 +84,6 @@ contract TestAggregatorHook is Test, Deployers, GasSnapshot {
 
     PoolModifyPositionTest modifyPositionRouter;
     PoolSwapTest swapRouter;
-
-    function stickOneSlot(
-        uint256 numberA,
-        uint256 numberADecimal,
-        uint256 numberB,
-        uint256 numberBDecimal
-    ) public pure returns (uint256 numberSet) {
-        numberSet = (numberA << 32) + (numberADecimal << 24) + (numberB << 8) + numberBDecimal;
-    }
-
-    function stickAmount(
-        uint256 askAmount,
-        uint256 askAmountDecimal,
-        uint256 bidAmount,
-        uint256 bidAmountDecimal
-    ) public pure returns (uint64 amountSet) {
-        amountSet = uint64(stickOneSlot(askAmount, askAmountDecimal, bidAmount, bidAmountDecimal));
-    }
-
-    function stickPrice(
-        uint256 midPrice,
-        uint256 midPriceDecimal,
-        uint256 feeRate,
-        uint256 askUpRate,
-        uint256 bidDownRate
-    ) public pure returns(uint80 priceInfo) {
-        priceInfo = uint80(
-            (midPrice << 56) + (midPriceDecimal << 48) + (feeRate << 32) + (askUpRate << 16) + bidDownRate
-        );
-    }
-
-    function constructToken0Info() public pure returns(D3Maker.TokenMMInfo memory tokenInfo) {
-        tokenInfo.priceInfo = stickPrice(1300, 18, 6, 12, 10);
-        tokenInfo.amountInfo = stickAmount(100, 18, 100, 18);
-    }
-
-    function constructToken1Info() public pure returns(D3Maker.TokenMMInfo memory tokenInfo) {
-        tokenInfo.priceInfo = stickPrice(12, 18, 6, 23, 15);
-        tokenInfo.amountInfo = stickAmount(100, 18, 100, 18);
-    }
 
     function setUp() public {
         token0 = new MockERC20("TestA", "A", 18, 2 ** 128);

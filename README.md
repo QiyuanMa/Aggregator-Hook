@@ -1,10 +1,13 @@
-# Uniswap v4 Periphery
+# Aggregator Hook
 
-Uniswap v4 is a new automated market maker protocol that provides extensibility and customizability to pools. `v4-periphery` hosts the logic that builds on top of the core pool logic like hook contracts, position managers, and even possibly libraries needed for integrations. The `v4-periphery` contracts in this repository are still in development and further periphery contracts have not yet been built.
+The project aims to create a system that accurately maps the positions of liquidity providers on various DEX platforms to Uniswap V4 ticks. This involves a few key steps and components:
 
-## Contributing
+- Position Mapping: The core functionality is to translate or map the LP positions from different DEXs onto Uniswap’s infrastructure. This means converting the LP’s stake in one DEX’s pool into an equivalent position in a Uniswap V4 pool.
+- Tick Alignment: Since Uniswap V4 utilizes a tick-based system for its liquidity pools, the project must align the LP's position to specific ticks within Uniswap. This alignment would ensure that the LP's assets are correctly priced and positioned for trading on Uniswap.
+- Integration and Interoperability: The project would require integration mechanisms with various DEXs to access and interpret LP data. This could involve smart contract development, APIs, and cross-chain communication protocols, ensuring that the system is compatible with different blockchain architectures and DEX platforms.
+- Liquidity Optimization: By mapping LP positions to Uniswap V4, liquidity can be optimized across platforms. This could potentially reduce slippage (the difference between expected and executed price of trades), provide better price discovery, and enhance overall market efficiency.
+- Smart Contract Automation: The process would likely rely on smart contracts to automate the mapping and management of LP positions. These contracts would handle the conversion and alignment of positions, adhering to the rules and structures of both the originating DEX and Uniswap V4.
 
-If you’re interested in contributing please see the [contribution guidelines](https://github.com/Uniswap/periphery-next/blob/main/CONTRIBUTING.md)!
 
 ## Repository Structure
 
@@ -16,6 +19,7 @@ contracts/
         | LimitOrder.sol
         | TWAMM.sol
         | VolatilityOracle.sol
+        | Aggregator.sol
 ----libraries/
     | Oracle.sol
 BaseHook.sol
@@ -34,24 +38,10 @@ To utilize the contracts and deploy to a local testnet, you can install the code
 forge install https://github.com/Uniswap/periphery-next
 ```
 
-If you are building hooks, it may be useful to inherit from the `BaseHook` contract:
+Run test of AggregatorHook, we try to swap token0 to token1 twice and make no price difference.
 
 ```solidity
-
-import {BaseHook} from 'periphery-next/contracts/BaseHook.sol';
-
-contract CoolHook is BaseHook {
-    // Override the hook callbacks you want on your hook
-    function beforeModifyPosition(
-        address,
-        IPoolManager.PoolKey calldata key,
-        IPoolManager.ModifyPositionParams calldata params
-    ) external override poolManagerOnly returns (bytes4) {
-        // hook logic
-        return BaseHook.beforeModifyPosition.selector;
-    }
-}
-
+forge test --match-test testHook_SwapSecondTime
 ```
 
 ## License
