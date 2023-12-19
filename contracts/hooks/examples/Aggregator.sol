@@ -37,6 +37,9 @@ contract AggregatorHook is BaseHook, PriceTool, ILockCallback {
 
     error SenderMustBeHook();
     error PriceDiffTooLarge();
+    // used for single token deposit
+    error TickCoverSlot0();
+    error TradeDirectionError();
 
     bytes internal constant ZERO_BYTES = bytes("");
     uint256 internal constant Q96 = 0x1000000000000000000000000;
@@ -150,21 +153,42 @@ contract AggregatorHook is BaseHook, PriceTool, ILockCallback {
         // query getAmountOut to generate fixed price
         (toAmount, tickUpper, tickLower) = getMockAmountOut(fromAmount, zeroForOne);
 
+        (, int24 tick0,,) = poolManager.getSlot0(poolId);
+        if(!zeroForOne && tickLower <= tick0) revert TradeDirectionError();
+        if(zeroForOne && tickUpper >= tick0) revert TradeDirectionError();
+        
         {
-        (, int24 tick,,) = poolManager.getSlot0(poolId);
+        
 
         console.log();
         console.log("round tick by tickSpacing:");
         console2.log("tickLower", tickLower);
         console2.log("tickUpper", tickUpper);
-        console2.log("slot0 tick:", tick);
+        console2.log("slot0 tick:", tick0);
         }
 
         // if zeroForOne, tick go up, from tickUpper to tickLower
         // if not, tick go down, from tickLower to tickUpper
-        int24 calTick = zeroForOne ? tickUpper : tickLower;
+        int24 calTick = zeroForOne ? tickUpper : tickLower;      
         uint128 liquidity = _calJITLiquidity(calTick, fromAmount, toAmount, zeroForOne);
-        console.log("before deposit:", liquidity);
+
+        // tick correct
+        if(zeroForOne == false) {
+            int24 limitTick = tickUpper;
+            uint256 priceNext = fromAmount * Q96 / liquidity + TickMath.getSqrtRatioAtTick(calTick);
+            uint256 priceLimit = uint256(TickMath.getSqrtRatioAtTick(limitTick));
+            if(priceNext > priceLimit) {
+                tickUpper = tickLower + 2;
+            }       
+        } else {
+            int24 limitTick = tickLower ;
+            uint256 sqrtPCal = uint256(TickMath.getSqrtRatioAtTick(calTick));
+            uint256 priceNext = (liquidity * sqrtPCal) / (liquidity + sqrtPCal / Q96 * fromAmount);
+            uint256 priceLimit = uint256(TickMath.getSqrtRatioAtTick(limitTick));
+            if(priceNext > priceLimit) {
+                tickLower --;
+            }
+        }
 
         BalanceDelta delta = _modifyPosition(
             key,
@@ -259,11 +283,6 @@ contract AggregatorHook is BaseHook, PriceTool, ILockCallback {
             uint256 tmp2 = fromAmount * uint256(sqrtPriceX96) * toAmount / Q96;
             liquidity = uint128(tmp2 / tmp1);
         } else {
-            // todo the formula didn't work
-            console.log("sell token1");
-            console2.log("curTick:", curTick);
-            console2.log(targetAmount);
-            console.log(toAmount * uint256(sqrtPriceX96) / Q96 * uint256(sqrtPriceX96) / Q96);
             uint256 tmp1 = fromAmount - toAmount * uint256(sqrtPriceX96) / Q96 * uint256(sqrtPriceX96) / Q96;
             uint256 tmp2 = fromAmount * uint256(sqrtPriceX96) * toAmount / Q96;
             liquidity = uint128(tmp2 / tmp1);

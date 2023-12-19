@@ -145,13 +145,6 @@ contract TestAggregatorHook is Test, Deployers, GasSnapshot {
         (uint256 toAmount,,) = aggregatorHook.getMockAmountOut(1 ether, true);
         console.log(toAmount);
 
-        /*
-        D3Maker.TokenMMInfo memory token0Info = constructToken0Info();
-        D3Maker.TokenMMInfo memory token1Info = constructToken1Info();
-        aggregatorHook.setTokenMMInfo(address(token0), token0Info);
-        aggregatorHook.setTokenMMInfo(address(token1), token1Info);
-        */
-
         IPoolManager.SwapParams memory params =
             IPoolManager.SwapParams({zeroForOne: true, amountSpecified: 1 ether, sqrtPriceLimitX96: MIN_SQRT_RATIO + 1});
         PoolSwapTest.TestSettings memory settings =
@@ -161,20 +154,6 @@ contract TestAggregatorHook is Test, Deployers, GasSnapshot {
         swapRouter.swap(testKey, params, settings, ZERO_BYTES);
         snapEnd();
 
-        /*
-        console.log();
-        console.log("token0(pool token1) balance in manager", token0.balanceOf(address(manager)));
-        console.log("token1(pool token0) balance in manager", token1.balanceOf(address(manager)));
-        console.log("token0 balance in aggregatorHook", token0.balanceOf(address(aggregatorHook)));
-        console.log("token1 balance in aggregatorHook", token1.balanceOf(address(aggregatorHook)));
-
-        aggregatorHook.removeRemainingLiquidity(key);
-        console.log();
-        console.log("token0 balance(pool token1) in manager", token0.balanceOf(address(manager)));
-        console.log("token1 balance(pool token0) in manager", token1.balanceOf(address(manager)));
-        console.log("token0 balance in aggregatorHook", token0.balanceOf(address(aggregatorHook)));
-        console.log("token1 balance in aggregatorHook", token1.balanceOf(address(aggregatorHook)));
-        */
     }
 
     function testHook_SwapSecondTime() public {
@@ -200,9 +179,9 @@ contract TestAggregatorHook is Test, Deployers, GasSnapshot {
         // But after user sell token1 to this pool, it will rebalance to market price.
         */
         
-        aggregatorHook.setNewPrice(92123767915558); // price become lower ,pass
+        aggregatorHook.setNewPrice(92123767915559); // price become lower ,pass
 
-        snapStart("HookSecondSwap");
+        snapStart("HookFrom0to1Swap_second");
         swapRouter.swap(testKey, params, settings, ZERO_BYTES);
         snapEnd();      
     }
@@ -232,8 +211,32 @@ contract TestAggregatorHook is Test, Deployers, GasSnapshot {
         
         aggregatorHook.setNewPrice(9214376791555881); // price become lower ,pass
 
-        snapStart("HookFrom1to0Swap");
+        snapStart("HookFrom1to0Swap_first");
         swapRouter.swap(testKey, params, settings, ZERO_BYTES);
         snapEnd();      
+
+        console.log("\n======= next swap 1 to 0========");
+        aggregatorHook.setNewPrice(9215676791555881); 
+        // 9215376791555881, price in tick -46872,slot0 = -46872,so deposit both tokens, price difference is large 
+        // price is 9215676791555881, tick from -46871, single side token deposit，success
+        swapRouter.swap(testKey, params, settings, ZERO_BYTES);
+
+
+        // add more 0 - 1
+         // sell token0 to token1, the second time
+        params =
+            IPoolManager.SwapParams({zeroForOne: true, amountSpecified: 1 ether, sqrtPriceLimitX96: MIN_SQRT_RATIO + 1});
+        settings =
+            PoolSwapTest.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
+
+        aggregatorHook.setNewPrice(9213076791555881); 
+        // price become lower ,pass
+        // 9213076791555881, the price fluctuation exceeds 50%, need tick adapt;
+        // price is less than 50%, > 921322.
+        // 9213376791555881, the price fluctuation in 50%，needn't tick adapt
+
+        snapStart("HookFrom1to0Swap_second");
+        swapRouter.swap(testKey, params, settings, ZERO_BYTES);  
+        snapEnd(); 
     }
 }
